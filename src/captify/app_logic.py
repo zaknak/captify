@@ -421,7 +421,7 @@ def stream_caption(
         yield: 逐次テキスト断片。
         return: 確定結果。
     例外:
-        CaptifyError: 通信失敗・空応答・上限超過時。
+        CaptifyError: 通信失敗・空応答時。
     使用例:
         >>> gen = stream_caption("http://127.0.0.1:1234", "model", "説明", Path("a.jpg"), 256, 0.2, 0.9, True)
     """
@@ -498,15 +498,6 @@ def stream_caption(
                 raise CaptifyError(
                     error_type="empty_text",
                     message="ERROR: モデル応答が空のためスキップしました。",
-                    model_name=model_name,
-                    image_path=str(image_path),
-                )
-            if len(final_text) > max_tokens:
-                raise CaptifyError(
-                    error_type="http_error",
-                    message=(
-                        "ERROR: 抽出テキスト長がmax_tokensを超過したため失敗しました。"
-                    ),
                     model_name=model_name,
                     image_path=str(image_path),
                 )
