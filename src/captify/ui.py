@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import gradio as gr
 
 from .app_logic import (
     DEFAULT_ENDPOINT,
@@ -17,11 +17,8 @@ from .app_logic import (
     setup_logging,
 )
 
-if TYPE_CHECKING:
-    import gradio as gr
 
-
-def build_app() -> "gr.Blocks":
+def build_app() -> gr.Blocks:
     """Gradioアプリを構築する。
 
     概要:
@@ -31,13 +28,10 @@ def build_app() -> "gr.Blocks":
     戻り値:
         構築済みGradio Blocks。
     例外:
-        ModuleNotFoundError: Gradio関連依存の読み込みに失敗した場合。
         Exception: プリセット読み込み失敗時など。
     使用例:
         >>> app = build_app()
     """
-
-    import gradio as gr
 
     setup_logging()
     presets: dict[str, str] = ensure_presets_file()
@@ -128,7 +122,6 @@ def launch() -> None:
     戻り値:
         なし。
     例外:
-        ModuleNotFoundError: Gradio関連依存の読み込みに失敗した場合。
         Exception: 起動失敗時。
     使用例:
         >>> launch()
