@@ -20,8 +20,8 @@ LOGGER = logging.getLogger("captify")
 SUPPORTED_EXTENSIONS: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
 DEFAULT_ENDPOINT: str = "http://127.0.0.1:1234"
 PRESET_PATH: Path = Path("presets.json")
-DEFAULT_MAX_IMAGE_WIDTH: int = 1280
-DEFAULT_MAX_IMAGE_PIXELS: int = DEFAULT_MAX_IMAGE_WIDTH * DEFAULT_MAX_IMAGE_WIDTH
+DEFAULT_MAX_IMAGE_MEGAPIXELS: float = 1.6384
+PIXELS_PER_MEGAPIXEL: int = 1_000_000
 
 DEFAULT_PRESETS: dict[str, str] = {
     "事実ベース（簡潔）": "画像の内容を事実ベースで簡潔に説明してください。",
@@ -245,34 +245,28 @@ def list_target_images(folder: Path) -> list[Path]:
     return sorted(items, key=lambda p: str(p))
 
 
-def _calc_resize_dimensions(width: int, height: int, max_image_width: int, max_image_pixels: int) -> tuple[int, int]:
+def _calc_resize_dimensions(width: int, height: int, max_image_pixels: float) -> tuple[int, int]:
     """仕様準拠のリサイズ後サイズを算出する。
 
     概要:
-        最大幅と最大画素数の両条件を満たす縮小サイズを返す。
+        最大画素数条件を満たす縮小サイズを返す。
     引数:
         width: 元画像の幅。
         height: 元画像の高さ。
-        max_image_width: 許容する最大幅。
-        max_image_pixels: 許容する最大画素数。
+        max_image_pixels: 許容する最大画素数（px）。
     戻り値:
         リサイズ後の幅・高さ。
     例外:
-        ValueError: 幅または高さが1未満の場合。
+        ValueError: 幅・高さ・最大画素数が1未満の場合。
     使用例:
-        >>> _calc_resize_dimensions(4096, 3072, 1280, 1638400)
+        >>> _calc_resize_dimensions(4096, 3072, 1638400)
     """
 
-    if width < 1 or height < 1:
-        raise ValueError("width/height は1以上である必要があります。")
-    if max_image_width < 1 or max_image_pixels < 1:
-        raise ValueError("max_image_width/max_image_pixels は1以上である必要があります。")
+    if width < 1 or height < 1 or max_image_pixels < 1:
+        raise ValueError("width/height/max_image_pixels は1以上である必要があります。")
 
     pixels = width * height
-    width_ratio = min(1.0, max_image_width / width)
-    pixel_ratio = min(1.0, (max_image_pixels / pixels) ** 0.5)
-    scale = min(width_ratio, pixel_ratio)
-
+    scale = min(1.0, (max_image_pixels / pixels) ** 0.5)
     if scale >= 1.0:
         return width, height
 
@@ -281,23 +275,23 @@ def _calc_resize_dimensions(width: int, height: int, max_image_width: int, max_i
     return resized_width, resized_height
 
 
-def to_data_url(image_path: Path, max_image_width: int, max_image_pixels: int) -> str:
+def to_data_url(image_path: Path, max_image_megapixels: float) -> str:
     """画像ファイルをbase64 data URLへ変換する。
 
     概要:
         画像破損を検出し、必要に応じて縮小リサイズしたうえでAPI送信可能なdata URLを返す。
     引数:
         image_path: 変換対象の画像パス。
-        max_image_width: 許容する最大幅。
-        max_image_pixels: 許容する最大画素数。
+        max_image_megapixels: 許容する最大画素数（メガピクセル）。
     戻り値:
         data URL文字列。
     例外:
         CaptifyError: ファイル読み込み失敗または破損画像の場合。
     使用例:
-        >>> to_data_url(Path("a.jpg"), 1280, 1638400)
+        >>> to_data_url(Path("a.jpg"), 1.6384)
     """
 
+    max_image_pixels = max_image_megapixels * PIXELS_PER_MEGAPIXEL
     suffix = image_path.suffix.lower().lstrip(".")
     mime = "jpeg" if suffix in {"jpg", "jpeg"} else suffix
 
@@ -310,7 +304,6 @@ def to_data_url(image_path: Path, max_image_width: int, max_image_pixels: int) -
             resized_width, resized_height = _calc_resize_dimensions(
                 source_width,
                 source_height,
-                max_image_width=max_image_width,
                 max_image_pixels=max_image_pixels,
             )
 
@@ -356,45 +349,36 @@ def to_data_url(image_path: Path, max_image_width: int, max_image_pixels: int) -
     return f"data:image/{mime};base64,{encoded}"
 
 
-
-
-def validate_resize_limits(max_image_width: int | float, max_image_pixels: int | float) -> tuple[int, int]:
+def validate_resize_limits(max_image_megapixels: int | float) -> float:
     """画像リサイズ上限値を検証する。
 
     概要:
-        UI入力された最大幅・最大画素数を整数に正規化し、妥当性を確認する。
+        UI入力された最大画素数（メガピクセル）を浮動小数へ正規化し、妥当性を確認する。
     引数:
-        max_image_width: 最大幅。
-        max_image_pixels: 最大画素数。
+        max_image_megapixels: 最大画素数（メガピクセル）。
     戻り値:
-        検証済みの (最大幅, 最大画素数)。
+        検証済みの最大画素数（メガピクセル）。
     例外:
-        CaptifyError: 数値変換不可または1未満の値が指定された場合。
+        CaptifyError: 数値変換不可または0以下の値が指定された場合。
     使用例:
-        >>> validate_resize_limits(1280, 1638400)
+        >>> validate_resize_limits(1.6384)
     """
 
     try:
-        normalized_width = int(max_image_width)
-        normalized_pixels = int(max_image_pixels)
+        normalized_megapixels = float(max_image_megapixels)
     except (TypeError, ValueError) as error:
         raise CaptifyError(
             error_type="invalid_resize_limit",
-            message=(
-                "ERROR: 画像リサイズ上限が不正です。"
-                f"max_image_width={max_image_width} max_image_pixels={max_image_pixels}"
-            ),
+            message=f"ERROR: 画像リサイズ上限が不正です。max_image_megapixels={max_image_megapixels}",
         ) from error
 
-    if normalized_width < 1 or normalized_pixels < 1:
+    if normalized_megapixels <= 0:
         raise CaptifyError(
             error_type="invalid_resize_limit",
-            message=(
-                "ERROR: 画像リサイズ上限が不正です。"
-                f"max_image_width={normalized_width} max_image_pixels={normalized_pixels}"
-            ),
+            message=f"ERROR: 画像リサイズ上限が不正です。max_image_megapixels={normalized_megapixels}",
         )
-    return normalized_width, normalized_pixels
+    return normalized_megapixels
+
 def _format_skip_log(error: CaptifyError) -> str:
     """仕様準拠のSKIPログ文を生成する。
 
@@ -545,8 +529,7 @@ def stream_caption(
     temperature: float,
     top_p: float,
     stream_enabled: bool,
-    max_image_width: int,
-    max_image_pixels: int,
+    max_image_megapixels: float,
 ) -> Generator[str, None, RunResult]:
     """画像1件のキャプション生成をストリーミング実行する。
 
@@ -561,19 +544,18 @@ def stream_caption(
         temperature: 温度パラメータ。
         top_p: top_pパラメータ。
         stream_enabled: ストリーミング表示を有効化するか。
-        max_image_width: 画像リサイズ時の最大幅。
-        max_image_pixels: 画像リサイズ時の最大画素数。
+        max_image_megapixels: 画像リサイズ時の最大画素数（メガピクセル）。
     戻り値:
         yield: 逐次テキスト断片。
         return: 確定結果。
     例外:
         CaptifyError: 通信失敗・空応答時。
     使用例:
-        >>> gen = stream_caption("http://127.0.0.1:1234", "model", "説明", Path("a.jpg"), 256, 0.2, 0.9, True, 1280, 1638400)
+        >>> gen = stream_caption("http://127.0.0.1:1234", "model", "説明", Path("a.jpg"), 256, 0.2, 0.9, True, 1.6384)
     """
 
     url = endpoint.rstrip("/") + "/v1/chat/completions"
-    data_url = to_data_url(image_path, max_image_width=max_image_width, max_image_pixels=max_image_pixels)
+    data_url = to_data_url(image_path, max_image_megapixels=max_image_megapixels)
     payload = {
         "model": model_name,
         "messages": _build_messages(prompt=prompt, data_url=data_url),
@@ -769,8 +751,7 @@ def _run_single(
     temperature: float,
     top_p: float,
     stream_enabled: bool,
-    max_image_width: int,
-    max_image_pixels: int,
+    max_image_megapixels: float,
 ) -> Generator[str, None, RunResult]:
     """単一画像処理を実行する。
 
@@ -785,8 +766,7 @@ def _run_single(
         temperature: temperature。
         top_p: top_p。
         stream_enabled: ストリーミング表示有効フラグ。
-        max_image_width: 画像リサイズ時の最大幅。
-        max_image_pixels: 画像リサイズ時の最大画素数。
+        max_image_megapixels: 画像リサイズ時の最大画素数（メガピクセル）。
     戻り値:
         yield: モデル応答中間テキスト。
         return: 確定結果。
@@ -805,8 +785,7 @@ def _run_single(
         temperature=temperature,
         top_p=top_p,
         stream_enabled=stream_enabled,
-        max_image_width=max_image_width,
-        max_image_pixels=max_image_pixels,
+        max_image_megapixels=max_image_megapixels,
     )
     while True:
         try:
@@ -885,8 +864,7 @@ def execute_test(
     temperature: float,
     top_p: float,
     stream_enabled: bool,
-    max_image_width: int,
-    max_image_pixels: int,
+    max_image_megapixels: float,
 ) -> Generator[tuple[str, str], None, None]:
     """テストボタン処理を実行する。
 
@@ -901,8 +879,7 @@ def execute_test(
         temperature: temperature。
         top_p: top_p。
         stream_enabled: ストリーミング表示有効フラグ。
-        max_image_width: 画像リサイズ時の最大幅。
-        max_image_pixels: 画像リサイズ時の最大画素数。
+        max_image_megapixels: 画像リサイズ時の最大画素数（メガピクセル）。
     戻り値:
         yield: (モデル応答, ログ文字列)。
     例外:
@@ -920,10 +897,7 @@ def execute_test(
         return
 
     try:
-        max_image_width, max_image_pixels = validate_resize_limits(
-            max_image_width=max_image_width,
-            max_image_pixels=max_image_pixels,
-        )
+        max_image_megapixels = validate_resize_limits(max_image_megapixels=max_image_megapixels)
         path = validate_input_folder(folder)
     except CaptifyError as error:
         line = (
@@ -953,8 +927,7 @@ def execute_test(
             temperature=temperature,
             top_p=top_p,
             stream_enabled=stream_enabled,
-            max_image_width=max_image_width,
-            max_image_pixels=max_image_pixels,
+            max_image_megapixels=max_image_megapixels,
         )
         while True:
             try:
@@ -980,8 +953,7 @@ def execute_batch(
     temperature: float,
     top_p: float,
     stream_enabled: bool,
-    max_image_width: int,
-    max_image_pixels: int,
+    max_image_megapixels: float,
 ) -> Generator[tuple[str, str], None, None]:
     """実行ボタン処理を実行する。
 
@@ -996,8 +968,7 @@ def execute_batch(
         temperature: temperature。
         top_p: top_p。
         stream_enabled: ストリーミング表示有効フラグ。
-        max_image_width: 画像リサイズ時の最大幅。
-        max_image_pixels: 画像リサイズ時の最大画素数。
+        max_image_megapixels: 画像リサイズ時の最大画素数（メガピクセル）。
     戻り値:
         yield: (モデル応答, ログ文字列)。
     例外:
@@ -1013,10 +984,7 @@ def execute_batch(
         return
 
     try:
-        max_image_width, max_image_pixels = validate_resize_limits(
-            max_image_width=max_image_width,
-            max_image_pixels=max_image_pixels,
-        )
+        max_image_megapixels = validate_resize_limits(max_image_megapixels=max_image_megapixels)
         path = validate_input_folder(folder)
     except CaptifyError as error:
         line = (
@@ -1052,8 +1020,7 @@ def execute_batch(
                 temperature=temperature,
                 top_p=top_p,
                 stream_enabled=stream_enabled,
-                max_image_width=max_image_width,
-                max_image_pixels=max_image_pixels,
+                max_image_megapixels=max_image_megapixels,
             )
             while True:
                 try:

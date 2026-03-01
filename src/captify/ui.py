@@ -14,8 +14,7 @@ from .app_logic import (
     available_preset_names,
     delete_preset_handler,
     ensure_presets_file,
-    DEFAULT_MAX_IMAGE_PIXELS,
-    DEFAULT_MAX_IMAGE_WIDTH,
+    DEFAULT_MAX_IMAGE_MEGAPIXELS,
     execute_batch,
     execute_test,
     first_preset,
@@ -90,8 +89,11 @@ def build_app() -> gr.Blocks:
             top_p = gr.Slider(label="top_p", minimum=0.0, maximum=1.0, step=0.05, value=0.9)
 
         with gr.Row():
-            max_image_width = gr.Number(label="max_image_width", value=DEFAULT_MAX_IMAGE_WIDTH, precision=0)
-            max_image_pixels = gr.Number(label="max_image_pixels", value=DEFAULT_MAX_IMAGE_PIXELS, precision=0)
+            max_image_megapixels = gr.Number(
+                label="max_image_megapixels",
+                value=DEFAULT_MAX_IMAGE_MEGAPIXELS,
+                precision=4,
+            )
 
         stream_enabled = gr.Checkbox(label="ストリーミング表示を有効化", value=True)
 
@@ -140,13 +142,13 @@ def build_app() -> gr.Blocks:
 
         test_btn.click(
             fn=execute_test,
-            inputs=[endpoint, model_dropdown, folder_input, prompt, max_tokens, temperature, top_p, stream_enabled, max_image_width, max_image_pixels],
+            inputs=[endpoint, model_dropdown, folder_input, prompt, max_tokens, temperature, top_p, stream_enabled, max_image_megapixels],
             outputs=[model_response, log_output],
         )
 
         run_btn.click(
             fn=execute_batch,
-            inputs=[endpoint, model_dropdown, folder_input, prompt, max_tokens, temperature, top_p, stream_enabled, max_image_width, max_image_pixels],
+            inputs=[endpoint, model_dropdown, folder_input, prompt, max_tokens, temperature, top_p, stream_enabled, max_image_megapixels],
             outputs=[model_response, log_output],
         )
 
