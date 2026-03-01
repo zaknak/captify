@@ -117,19 +117,19 @@ def build_app() -> gr.Blocks:
         add_preset_btn.click(
             fn=add_preset_handler,
             inputs=[preset_name_input, prompt, preset_dropdown],
-            outputs=[preset_dropdown, preset_dropdown, prompt, preset_name_input, log_output],
+            outputs=[preset_dropdown, prompt, preset_name_input, log_output],
         )
 
         update_preset_btn.click(
             fn=update_preset_handler,
             inputs=[preset_dropdown, prompt],
-            outputs=[preset_dropdown, preset_dropdown, prompt, log_output],
+            outputs=[preset_dropdown, prompt, log_output],
         )
 
         delete_preset_btn.click(
             fn=delete_preset_handler,
             inputs=[preset_dropdown],
-            outputs=[preset_dropdown, preset_dropdown, prompt, log_output],
+            outputs=[preset_dropdown, prompt, log_output],
         )
 
         test_btn.click(
