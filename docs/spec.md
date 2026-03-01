@@ -104,6 +104,24 @@ image01.jpg → image01.txt
 ### 挙動・動作
 - 入力フォルダ内再帰列挙
 - 列挙結果はフルパス昇順で処理する
+- 入力フォルダ検証は以下4ケースを定義し、いずれかに該当する場合は処理を開始しない。
+  - 未指定：入力フォルダ指定欄が空。
+    - UI表示（ERROR）：`ERROR: 入力フォルダが未指定です。folder={folder}`
+    - ログ出力：`ERROR: input_folder_validation error_type=folder_not_specified folder={folder}`
+  - 不存在：指定パスが存在しない。
+    - UI表示（ERROR）：`ERROR: 入力フォルダが存在しません。folder={folder}`
+    - ログ出力：`ERROR: input_folder_validation error_type=folder_not_found folder={folder}`
+  - ディレクトリでない：指定パスがファイル等でありディレクトリではない。
+    - UI表示（ERROR）：`ERROR: 入力パスがディレクトリではありません。folder={folder}`
+    - ログ出力：`ERROR: input_folder_validation error_type=not_a_directory folder={folder}`
+  - アクセス拒否：指定ディレクトリへの読み取り権限がない。
+    - UI表示（ERROR）：`ERROR: 入力フォルダにアクセスできません。folder={folder}`
+    - ログ出力：`ERROR: input_folder_validation error_type=permission_denied folder={folder}`
+- 入力フォルダ検証に成功後、対象画像が0件の場合は処理を終了する。
+  - 挙動：API呼び出し・推論処理を行わず即時終了する。
+  - UI表示（WARNING）：`WARNING: 対象画像が見つかりませんでした。folder={folder} count=0`
+  - ログ出力：`WARNING: no_target_images folder={folder} count=0 action=stop_without_save`
+  - 保存処理：txt新規作成・上書き・バックアップを含め一切実施しない。
 - プロンプトプリセットは選択時に、プリセット本文をプロンプトテキスト欄へ反映（コピー）する。
 - 保存前バックアップ（6章のバックアップ仕様を適用）
 - 保存テキストは「最初の assistant message の text」を抽出して使用する。
@@ -129,6 +147,8 @@ image01.jpg → image01.txt
   - ログ文言は既存のスキップ形式に従い、`SKIP: error_type={error_type} status=none model={model_name} file={image_path}` とする。
   - UI表示には、対象ファイルが読み込み不可または破損画像である旨を明示する。
 - テストボタンは最初の画像1枚目のみを問い合わせ、応答を表示する。txtの保存は行わない。
+  - 入力フォルダ検証に成功しても対象画像が0件の場合、API呼び出しは行わず「モデル応答」領域に `TEST SKIPPED: 対象画像が0件のためテストを実行しません。folder={folder} count=0` を表示する。
+  - 上記0件時は「ログ表示」領域にも同内容を1行追記する。
   - 失敗時は「モデル応答」領域に成功レスポンスの代わりにエラーメッセージを表示する。
   - 表示文言は `TEST FAILED: {error_type} status={status_code_or_none} model={model_name}` 形式とし、必要に応じて詳細（タイムアウト、接続失敗理由）を追記する。
   - 同時に「ログ表示」領域にも同内容を1行追記する。
