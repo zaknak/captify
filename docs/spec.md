@@ -27,6 +27,9 @@
 ## 4. 入力画像
 - 指定フォルダを再帰探索
 - 対象拡張子：.png, .jpg, .jpeg, .webp, .bmp
+- 探索時のシンボリックリンクの扱いは規定しない（don't care）
+- 探索時の隠しファイル・隠しディレクトリの扱いは規定しない（don't care）
+- 処理順はフルパス昇順で固定し、再現性を担保する
 
 ---
 
@@ -93,6 +96,7 @@ image01.jpg → image01.txt
 
 ### 挙動・動作
 - 入力フォルダ内再帰列挙
+- 列挙結果はフルパス昇順で処理する
 - 保存前バックアップ（6章のバックアップ仕様を適用）
 - 保存テキストは「最初の assistant message の text」を抽出して使用する。
 - モデル応答にはストリーミングで得られたテキストを逐次表示し、生成完了時に確定した応答へ更新する。
@@ -112,6 +116,10 @@ image01.jpg → image01.txt
   - HTTP status `status={status_code}`（未取得時は `status=none`）
   - モデル名 `model={model_name}`
   - ログ文言形式：`SKIP: error_type={error_type} status={status_code_or_none} model={model_name} file={image_path}`
+- 読み込み不可ファイル・破損画像は当該ファイルをスキップし、ログ表示とUI表示の双方にエラーを出す。
+  - エラー種別は `error_type=file_read_error` または `error_type=corrupt_image` を使用する。
+  - ログ文言は既存のスキップ形式に従い、`SKIP: error_type={error_type} status=none model={model_name} file={image_path}` とする。
+  - UI表示には、対象ファイルが読み込み不可または破損画像である旨を明示する。
 - テストボタンは最初の画像1枚目のみを問い合わせ、応答を表示する。txtの保存は行わない。
   - 失敗時は「モデル応答」領域に成功レスポンスの代わりにエラーメッセージを表示する。
   - 表示文言は `TEST FAILED: {error_type} status={status_code_or_none} model={model_name}` 形式とし、必要に応じて詳細（タイムアウト、接続失敗理由）を追記する。
