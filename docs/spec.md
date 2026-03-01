@@ -96,14 +96,26 @@ image01.jpg → image01.txt
 - 保存前バックアップ（6章のバックアップ仕様を適用）
 - 保存テキストは「最初の assistant message の text」を抽出して使用する。
 - モデル応答にはストリーミングで得られたテキストを逐次表示し、生成完了時に確定した応答へ更新する。
-- 以下の失敗条件に該当した場合はスキップし、ログに理由を記録する。
-  - HTTPエラー（ステータスコードが2xx以外）
-    - ログ文言：`SKIP: HTTPエラー status={status_code} file={image_path}`
-  - 抽出テキストが空文字（空白のみを含む場合も空とみなす）
-    - ログ文言：`SKIP: 空レスポンス file={image_path}`
-  - タイムアウト
-    - ログ文言：`SKIP: タイムアウト file={image_path}`
+- 正常応答は以下をすべて満たした場合とする。
+  - HTTPステータスコードが2xxである。
+  - ストリーミング完了後に抽出した「最初の assistant message の text」が非空である（空白のみは空とみなす）。
+  - 抽出テキスト長が `max_tokens` を超過しない。
+- 異常時は以下の再試行ルールを適用する。
+  - 対象：HTTPエラー（2xx以外）、タイムアウト、推論処理中の接続エラー。
+  - 再試行回数：最大2回（初回試行を含めて最大3回実行）。
+  - 待機秒：再試行前に毎回2秒待機する。
+  - 最終判定：再試行上限に達しても正常応答条件を満たさない場合、当該画像はスキップする。
+  - 抽出テキストが空文字の場合は再試行せず即時スキップする。
+- スキップ時はログに以下の必須項目を含める。
+  - 画像パス `file={image_path}`
+  - エラー種別 `error_type={error_type}`（`http_error` / `timeout` / `connection_error` / `empty_text`）
+  - HTTP status `status={status_code}`（未取得時は `status=none`）
+  - モデル名 `model={model_name}`
+  - ログ文言形式：`SKIP: error_type={error_type} status={status_code_or_none} model={model_name} file={image_path}`
 - テストボタンは最初の画像1枚目のみを問い合わせ、応答を表示する。txtの保存は行わない。
+  - 失敗時は「モデル応答」領域に成功レスポンスの代わりにエラーメッセージを表示する。
+  - 表示文言は `TEST FAILED: {error_type} status={status_code_or_none} model={model_name}` 形式とし、必要に応じて詳細（タイムアウト、接続失敗理由）を追記する。
+  - 同時に「ログ表示」領域にも同内容を1行追記する。
 
 ---
 
