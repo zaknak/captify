@@ -143,6 +143,33 @@ def ensure_presets_file() -> dict[str, str]:
     return data
 
 
+def save_presets(presets: dict[str, str]) -> None:
+    """プリセット辞書をJSONへ保存する。
+
+    概要:
+        プリセット情報を `presets.json` へ永続化する。
+    引数:
+        presets: 保存対象のプリセット辞書。
+    戻り値:
+        なし。
+    例外:
+        CaptifyError: 保存失敗時。
+    使用例:
+        >>> save_presets({"事実ベース（簡潔）": "説明"})
+    """
+
+    try:
+        PRESET_PATH.write_text(
+            json.dumps(presets, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as error:
+        raise CaptifyError(
+            error_type="file_read_error",
+            message=f"ERROR: プリセットファイルを保存できません。path={PRESET_PATH}",
+        ) from error
+
+
 def validate_input_folder(folder: str) -> Path:
     """入力フォルダを検証する。
 
@@ -706,6 +733,8 @@ def preview_images(folder: str) -> tuple[list[str], str]:
         >>> preview_images("./images")
     """
 
+    import gradio as gr
+
     logs: list[str] = []
     try:
         path = validate_input_folder(folder)
@@ -752,6 +781,8 @@ def execute_test(
     使用例:
         >>> pass
     """
+
+    import gradio as gr
 
     logs: list[str] = []
     if not model_name:
@@ -956,23 +987,153 @@ def model_fetch_handler(endpoint: str) -> tuple[Any, str, str]:
         return gr.update(choices=[], value=None, interactive=False), "", _append_log(logs, line, level="ERROR")
 
 
-def preset_change_handler(preset_name: str, presets: dict[str, str]) -> str:
+def preset_change_handler(preset_name: str) -> str:
     """プリセット選択時に本文を返す。
 
     概要:
         プリセット名に紐づく本文をプロンプト欄へ反映する。
     引数:
         preset_name: 選択されたプリセット名。
-        presets: プリセット辞書。
     戻り値:
         プロンプト本文。
     例外:
         なし。
     使用例:
-        >>> preset_change_handler("a", {"a": "text"})
+        >>> preset_change_handler("a")
     """
 
+    try:
+        presets = ensure_presets_file()
+    except CaptifyError:
+        return ""
     return presets.get(preset_name, "")
+
+
+def add_preset_handler(
+    preset_name_input: str,
+    prompt_text: str,
+    selected_preset_name: str,
+) -> tuple[dict[str, Any], str, str, str]:
+    """現在プロンプトを新規プリセットとして登録する。
+
+    概要:
+        入力されたプリセット名で `presets.json` へ新規追加し、UI更新値を返す。
+    引数:
+        preset_name_input: 追加するプリセット名入力値。
+        prompt_text: 現在のプロンプト本文。
+        selected_preset_name: 現在選択中のプリセット名。
+    戻り値:
+        (ドロップダウン更新情報, プロンプト本文, プリセット名入力欄, ログ文字列)。
+    例外:
+        なし。内部でハンドリングしてERRORを返す。
+    使用例:
+        >>> add_preset_handler("新規", "本文", "事実ベース（簡潔）")
+    """
+
+    import gradio as gr
+
+    logs: list[str] = []
+    name = preset_name_input.strip()
+    if not name:
+        line = "ERROR: プリセット名が未入力です。"
+        try:
+            presets = ensure_presets_file()
+            current_prompt = presets.get(selected_preset_name, prompt_text)
+            return gr.update(choices=list(presets.keys()), value=selected_preset_name), current_prompt, preset_name_input, _append_log(logs, line, level="ERROR")
+        except CaptifyError as error:
+            return gr.update(choices=[], value=None), prompt_text, preset_name_input, _append_log(logs, error.message, level="ERROR")
+
+    try:
+        presets = ensure_presets_file()
+        if name in presets:
+            line = f"ERROR: プリセット名が重複しています。name={name}"
+            current_prompt = presets.get(selected_preset_name, prompt_text)
+            return gr.update(choices=list(presets.keys()), value=selected_preset_name), current_prompt, preset_name_input, _append_log(logs, line, level="ERROR")
+
+        presets[name] = prompt_text
+        save_presets(presets)
+        line = f"INFO: preset_added name={name}"
+        return gr.update(choices=list(presets.keys()), value=name), prompt_text, "", _append_log(logs, line)
+    except CaptifyError as error:
+        line = error.message
+        return gr.update(choices=[], value=None), prompt_text, preset_name_input, _append_log(logs, line, level="ERROR")
+
+
+def update_preset_handler(
+    selected_preset_name: str,
+    prompt_text: str,
+) -> tuple[dict[str, Any], str, str]:
+    """選択中プリセットを現在プロンプトで更新する。
+
+    概要:
+        選択中プリセットの本文を現在のプロンプト本文で上書き保存する。
+    引数:
+        selected_preset_name: 現在選択中のプリセット名。
+        prompt_text: 現在のプロンプト本文。
+    戻り値:
+        (ドロップダウン更新情報, プロンプト本文, ログ文字列)。
+    例外:
+        なし。内部でハンドリングしてERRORを返す。
+    使用例:
+        >>> update_preset_handler("事実ベース（簡潔）", "更新本文")
+    """
+
+    import gradio as gr
+
+    logs: list[str] = []
+    try:
+        presets = ensure_presets_file()
+        if not selected_preset_name or selected_preset_name not in presets:
+            line = "ERROR: 更新対象のプリセットが選択されていません。"
+            return gr.update(choices=list(presets.keys()), value=selected_preset_name), prompt_text, _append_log(logs, line, level="ERROR")
+
+        presets[selected_preset_name] = prompt_text
+        save_presets(presets)
+        line = f"INFO: preset_updated name={selected_preset_name}"
+        return gr.update(choices=list(presets.keys()), value=selected_preset_name), prompt_text, _append_log(logs, line)
+    except CaptifyError as error:
+        line = error.message
+        return gr.update(choices=[], value=None), prompt_text, _append_log(logs, line, level="ERROR")
+
+
+def delete_preset_handler(selected_preset_name: str) -> tuple[dict[str, Any], str, str]:
+    """選択中プリセットを削除する。
+
+    概要:
+        選択中プリセットを削除し、残存先頭プリセットを選択状態として返す。
+    引数:
+        selected_preset_name: 現在選択中のプリセット名。
+    戻り値:
+        (ドロップダウン更新情報, プロンプト本文, ログ文字列)。
+    例外:
+        なし。内部でハンドリングしてERRORを返す。
+    使用例:
+        >>> delete_preset_handler("事実ベース（簡潔）")
+    """
+
+    import gradio as gr
+
+    logs: list[str] = []
+    try:
+        presets = ensure_presets_file()
+        if not selected_preset_name or selected_preset_name not in presets:
+            line = "ERROR: 削除対象のプリセットが選択されていません。"
+            fallback_name, fallback_prompt = first_preset(presets)
+            return gr.update(choices=list(presets.keys()), value=fallback_name), fallback_prompt, _append_log(logs, line, level="ERROR")
+
+        if len(presets) <= 1:
+            line = "ERROR: プリセットが1件のため削除できません。"
+            current_prompt = presets[selected_preset_name]
+            return gr.update(choices=list(presets.keys()), value=selected_preset_name), current_prompt, _append_log(logs, line, level="ERROR")
+
+        del presets[selected_preset_name]
+        save_presets(presets)
+        next_name, next_prompt = first_preset(presets)
+        line = f"INFO: preset_deleted name={selected_preset_name}"
+        return gr.update(choices=list(presets.keys()), value=next_name), next_prompt, _append_log(logs, line)
+    except CaptifyError as error:
+        line = error.message
+        return gr.update(choices=[], value=None), "", _append_log(logs, line, level="ERROR")
 
 
 def available_preset_names(presets: dict[str, str]) -> Iterable[str]:

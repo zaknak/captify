@@ -10,7 +10,9 @@ import gradio as gr
 
 from .app_logic import (
     DEFAULT_ENDPOINT,
+    add_preset_handler,
     available_preset_names,
+    delete_preset_handler,
     ensure_presets_file,
     execute_batch,
     execute_test,
@@ -19,6 +21,7 @@ from .app_logic import (
     preset_change_handler,
     preview_images,
     setup_logging,
+    update_preset_handler,
 )
 
 LOGGER = logging.getLogger("captify")
@@ -74,6 +77,12 @@ def build_app() -> gr.Blocks:
             prompt = gr.Textbox(label="プロンプト", lines=5, value=first_prompt)
 
         with gr.Row():
+            preset_name_input = gr.Textbox(label="プリセット名", placeholder="新規プリセット名を入力")
+            add_preset_btn = gr.Button("新規登録")
+            update_preset_btn = gr.Button("選択中を更新")
+            delete_preset_btn = gr.Button("選択中を削除")
+
+        with gr.Row():
             max_tokens = gr.Slider(label="max_tokens", minimum=1, maximum=4096, step=1, value=256)
             temperature = gr.Slider(label="temperature", minimum=0.0, maximum=2.0, step=0.1, value=0.2)
             top_p = gr.Slider(label="top_p", minimum=0.0, maximum=1.0, step=0.05, value=0.9)
@@ -100,9 +109,27 @@ def build_app() -> gr.Blocks:
         )
 
         preset_dropdown.change(
-            fn=lambda preset_name: preset_change_handler(preset_name, presets),
+            fn=preset_change_handler,
             inputs=[preset_dropdown],
             outputs=[prompt],
+        )
+
+        add_preset_btn.click(
+            fn=add_preset_handler,
+            inputs=[preset_name_input, prompt, preset_dropdown],
+            outputs=[preset_dropdown, prompt, preset_name_input, log_output],
+        )
+
+        update_preset_btn.click(
+            fn=update_preset_handler,
+            inputs=[preset_dropdown, prompt],
+            outputs=[preset_dropdown, prompt, log_output],
+        )
+
+        delete_preset_btn.click(
+            fn=delete_preset_handler,
+            inputs=[preset_dropdown],
+            outputs=[preset_dropdown, prompt, log_output],
         )
 
         test_btn.click(
