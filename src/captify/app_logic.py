@@ -402,11 +402,12 @@ def stream_caption(
     max_tokens: int,
     temperature: float,
     top_p: float,
+    stream_enabled: bool,
 ) -> Generator[str, None, RunResult]:
     """画像1件のキャプション生成をストリーミング実行する。
 
     概要:
-        `/v1/chat/completions` を `stream=true` で呼び、部分文字列を逐次yieldする。
+        `/v1/chat/completions` を呼び、設定に応じてストリーミングまたは通常応答で処理する。
     引数:
         endpoint: APIエンドポイント。
         model_name: 使用モデル名。
@@ -415,13 +416,14 @@ def stream_caption(
         max_tokens: 最大トークン設定値。
         temperature: 温度パラメータ。
         top_p: top_pパラメータ。
+        stream_enabled: ストリーミング表示を有効化するか。
     戻り値:
         yield: 逐次テキスト断片。
         return: 確定結果。
     例外:
         CaptifyError: 通信失敗・空応答・上限超過時。
     使用例:
-        >>> gen = stream_caption("http://127.0.0.1:1234", "model", "説明", Path("a.jpg"), 256, 0.2, 0.9)
+        >>> gen = stream_caption("http://127.0.0.1:1234", "model", "説明", Path("a.jpg"), 256, 0.2, 0.9, True)
     """
 
     url = endpoint.rstrip("/") + "/v1/chat/completions"
@@ -432,7 +434,7 @@ def stream_caption(
         "max_tokens": max_tokens,
         "temperature": temperature,
         "top_p": top_p,
-        "stream": True,
+        "stream": stream_enabled,
     }
 
     last_error: CaptifyError | None = None
@@ -440,7 +442,40 @@ def stream_caption(
         pieces: list[str] = []
         try:
             with httpx.Client(timeout=60.0) as client:
-                with client.stream("POST", url, json=payload) as response:
+                if stream_enabled:
+                    with client.stream("POST", url, json=payload) as response:
+                        if response.status_code < 200 or response.status_code >= 300:
+                            raise CaptifyError(
+                                error_type="http_error",
+                                message="ERROR: 推論に失敗しました。",
+                                status_code=response.status_code,
+                                model_name=model_name,
+                                image_path=str(image_path),
+                            )
+
+                        for raw in response.iter_lines():
+                            line = raw.strip() if raw else ""
+                            if not line.startswith("data:"):
+                                continue
+                            data = line[5:].strip()
+                            if data == "[DONE]":
+                                break
+                            if not data:
+                                continue
+                            try:
+                                chunk = json.loads(data)
+                            except json.JSONDecodeError:
+                                continue
+                            choices = chunk.get("choices", [])
+                            if not choices:
+                                continue
+                            delta = choices[0].get("delta", {})
+                            text = delta.get("content")
+                            if isinstance(text, str) and text:
+                                pieces.append(text)
+                                yield "".join(pieces)
+                else:
+                    response = client.post(url, json=payload)
                     if response.status_code < 200 or response.status_code >= 300:
                         raise CaptifyError(
                             error_type="http_error",
@@ -449,25 +484,11 @@ def stream_caption(
                             model_name=model_name,
                             image_path=str(image_path),
                         )
-
-                    for raw in response.iter_lines():
-                        line = raw.strip() if raw else ""
-                        if not line.startswith("data:"):
-                            continue
-                        data = line[5:].strip()
-                        if data == "[DONE]":
-                            break
-                        if not data:
-                            continue
-                        try:
-                            chunk = json.loads(data)
-                        except json.JSONDecodeError:
-                            continue
-                        choices = chunk.get("choices", [])
-                        if not choices:
-                            continue
-                        delta = choices[0].get("delta", {})
-                        text = delta.get("content")
+                    body = response.json()
+                    choices = body.get("choices", [])
+                    if choices:
+                        message = choices[0].get("message", {})
+                        text = message.get("content")
                         if isinstance(text, str) and text:
                             pieces.append(text)
                             yield "".join(pieces)
@@ -610,6 +631,7 @@ def _run_single(
     max_tokens: int,
     temperature: float,
     top_p: float,
+    stream_enabled: bool,
 ) -> Generator[str, None, RunResult]:
     """単一画像処理を実行する。
 
@@ -623,6 +645,7 @@ def _run_single(
         max_tokens: max_tokens。
         temperature: temperature。
         top_p: top_p。
+        stream_enabled: ストリーミング表示有効フラグ。
     戻り値:
         yield: モデル応答中間テキスト。
         return: 確定結果。
@@ -640,6 +663,7 @@ def _run_single(
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
+        stream_enabled=stream_enabled,
     )
     while True:
         try:
@@ -715,6 +739,7 @@ def execute_test(
     max_tokens: int,
     temperature: float,
     top_p: float,
+    stream_enabled: bool,
 ) -> Generator[tuple[str, str], None, None]:
     """テストボタン処理を実行する。
 
@@ -728,6 +753,7 @@ def execute_test(
         max_tokens: max_tokens。
         temperature: temperature。
         top_p: top_p。
+        stream_enabled: ストリーミング表示有効フラグ。
     戻り値:
         yield: (モデル応答, ログ文字列)。
     例外:
@@ -767,6 +793,7 @@ def execute_test(
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
+            stream_enabled=stream_enabled,
         )
         while True:
             try:
@@ -791,6 +818,7 @@ def execute_batch(
     max_tokens: int,
     temperature: float,
     top_p: float,
+    stream_enabled: bool,
 ) -> Generator[tuple[str, str], None, None]:
     """実行ボタン処理を実行する。
 
@@ -804,6 +832,7 @@ def execute_batch(
         max_tokens: max_tokens。
         temperature: temperature。
         top_p: top_p。
+        stream_enabled: ストリーミング表示有効フラグ。
     戻り値:
         yield: (モデル応答, ログ文字列)。
     例外:
@@ -849,6 +878,7 @@ def execute_batch(
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
+                stream_enabled=stream_enabled,
             )
             while True:
                 try:

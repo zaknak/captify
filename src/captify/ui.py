@@ -78,6 +78,8 @@ def build_app() -> gr.Blocks:
             temperature = gr.Slider(label="temperature", minimum=0.0, maximum=2.0, step=0.1, value=0.2)
             top_p = gr.Slider(label="top_p", minimum=0.0, maximum=1.0, step=0.05, value=0.9)
 
+        stream_enabled = gr.Checkbox(label="ストリーミング表示を有効化", value=True)
+
         with gr.Row():
             run_btn = gr.Button("実行", variant="primary")
             test_btn = gr.Button("テスト")
@@ -105,13 +107,13 @@ def build_app() -> gr.Blocks:
 
         test_btn.click(
             fn=execute_test,
-            inputs=[endpoint, model_dropdown, folder_input, prompt, max_tokens, temperature, top_p],
+            inputs=[endpoint, model_dropdown, folder_input, prompt, max_tokens, temperature, top_p, stream_enabled],
             outputs=[model_response, log_output],
         )
 
         run_btn.click(
             fn=execute_batch,
-            inputs=[endpoint, model_dropdown, folder_input, prompt, max_tokens, temperature, top_p],
+            inputs=[endpoint, model_dropdown, folder_input, prompt, max_tokens, temperature, top_p, stream_enabled],
             outputs=[model_response, log_output],
         )
 
