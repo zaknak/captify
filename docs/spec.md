@@ -292,3 +292,12 @@
 ### 8.5 画像プレビュー更新タイミング
 - 入力フォルダ変更時の自動更新ではなく、`フォルダ内画像プレビュー更新` ボタン押下で再帰探索し表示を更新する
 - 対象画像が0件の場合は `3.3` / `3.6` 準拠のWARNINGログを表示し、API呼び出しは行わない
+
+### 8.6 Gradio allowed_paths の起動設定
+- Gradio の `allowed_paths` は以下2経路で指定可能とする
+  1. `allowed_paths.json`（既定ファイル名）
+  2. 起動オプション `--allowed-path`（複数指定可）
+- `allowed_paths.json` の形式は `{ "allowed_paths": ["/path/a", "/path/b"] }` とする
+- 適用順は「JSON → 起動オプション」の順で結合し、重複は除去する
+- `allowed_paths.json` が存在しない場合は空配列として扱い、起動は継続する
+- `allowed_paths.json` の形式が不正な場合は `ValueError` として起動失敗とする
