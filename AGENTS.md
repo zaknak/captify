@@ -6,7 +6,7 @@
 
 推奨手順例：
 ```
-python3.13 -m venv venv
+python -m venv venv
 source venv/bin/activate  # Windowsは venv\Scripts\activate
 pip install -r requirements.txt
 ```
