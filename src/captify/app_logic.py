@@ -309,20 +309,24 @@ def to_data_url(image_path: Path, max_image_megapixels: float) -> str:
 
             if (resized_width, resized_height) != (source_width, source_height):
                 LOGGER.info(
-                    "INFO: image_resized path=%s from=%sx%s to=%sx%s",
+                    "INFO: image_resized path=%s from=%sx%s to=%sx%s max_megapixels=%s max_pixels=%s",
                     image_path,
                     source_width,
                     source_height,
                     resized_width,
                     resized_height,
+                    max_image_megapixels,
+                    int(max_image_pixels),
                 )
                 img = img.resize((resized_width, resized_height), Image.Resampling.LANCZOS)
             else:
                 LOGGER.info(
-                    "INFO: image_resize_skipped path=%s size=%sx%s",
+                    "INFO: image_resize_skipped path=%s size=%sx%s max_megapixels=%s max_pixels=%s",
                     image_path,
                     source_width,
                     source_height,
+                    max_image_megapixels,
+                    int(max_image_pixels),
                 )
 
             if mime == "jpeg" and img.mode in {"RGBA", "LA", "P"}:
