@@ -53,7 +53,7 @@ def main() -> None:
     """
 
     args = parse_args()
-    from src.captify.ui import launch
+    from captify.ui import launch
 
     launch(allowed_paths_json=args.allowed_paths_json, allowed_paths_cli=args.allowed_path)
 
